@@ -157,16 +157,19 @@ static void
 r1373f4_init(struct gk104_ramfuc *fuc)
 {
 	struct gk104_ram *ram = container_of(fuc, typeof(*ram), fuc);
-	const u32 mcoef = ((--ram->P2 << 28) | (ram->N2 << 8) | ram->M2);
+	const u32 mcoef = ((  ram->P2 << 16) | (ram->N2 << 8) | ram->M2);
 	const u32 rcoef = ((  ram->P1 << 16) | (ram->N1 << 8) | ram->M1);
 	const u32 runk0 = ram->fN1 << 16;
-	const u32 runk1 = ram->fN1;
+	u32 runk1 = ram->fN1;
+
+	if (ram->mode == 2)
+		runk1 |= 0x0abf0000;
 
 	if (ram->from == 2) {
-		ram_mask(fuc, 0x1373f4, 0x00000000, 0x00001100);
+		ram_mask(fuc, 0x1373f4, 0x00001000, 0x00000100);
 		ram_mask(fuc, 0x1373f4, 0x00000000, 0x00000010);
 	} else {
-		ram_mask(fuc, 0x1373f4, 0x00000000, 0x00010010);
+		ram_mask(fuc, 0x1373f4, 0x00001000, 0x00011010);
 	}
 
 	ram_mask(fuc, 0x1373f4, 0x00000003, 0x00000000);
@@ -174,12 +177,12 @@ r1373f4_init(struct gk104_ramfuc *fuc)
 
 	/* (re)program refpll, if required */
 	if ((ram_rd32(fuc, 0x132024) & 0xffffffff) != rcoef ||
-	    (ram_rd32(fuc, 0x132034) & 0x0000ffff) != runk1) {
+	    (ram_rd32(fuc, 0x132034) & 0xffffffff) != runk1) {
 		ram_mask(fuc, 0x132000, 0x00000001, 0x00000000);
 		ram_mask(fuc, 0x132020, 0x00000001, 0x00000000);
 		ram_wr32(fuc, 0x137320, 0x00000000);
 		ram_mask(fuc, 0x132030, 0xffff0000, runk0);
-		ram_mask(fuc, 0x132034, 0x0000ffff, runk1);
+		ram_mask(fuc, 0x132034, 0xffffffff, runk1);
 		ram_wr32(fuc, 0x132024, rcoef);
 		ram_mask(fuc, 0x132028, 0x00080000, 0x00080000);
 		ram_mask(fuc, 0x132020, 0x00000001, 0x00000001);
@@ -196,6 +199,8 @@ r1373f4_init(struct gk104_ramfuc *fuc)
 		ram_mask(fuc, 0x132000, 0x00000001, 0x00000001);
 		ram_wait(fuc, 0x137390, 0x00000002, 0x00000002, 64000);
 		ram_mask(fuc, 0x1373f4, 0x00000000, 0x00001100);
+		ram_wr32(fuc, 0x132030, 0x0ffe1007);
+		ram_wr32(fuc, 0x132034, 0x0abf0ffe);
 	} else {
 		ram_mask(fuc, 0x1373f4, 0x00000000, 0x00010100);
 	}
@@ -623,6 +628,8 @@ gk104_ram_calc_gddr5(struct gk104_ram *ram, u32 freq)
 	} else {
 		data |= 0x00040044;
 	}
+	if (ram->mode == 2)
+		data |= 0x00000040;
 	ram_wr32(fuc, 0x10f978, data);
 
 	if (ram->mode == 1) {
@@ -1034,6 +1041,13 @@ gk104_pll_calc_hiclk(int target_khz, int crystal,
 	if (upper)
 		*fN1 = (u16)(1 - *fN1);
 
+	*fN1 = 4094;
+	*P1 = 0x7;
+	*N1 = 0x28;
+	*M1 = 0x1;
+	*P2 = 0x1;
+	*N2 = 0x13;
+	*M2 = 0x1;
 	return gk104_calc_pll_output(*fN1, 1, *N1, *P1, crystal);
 }
 
